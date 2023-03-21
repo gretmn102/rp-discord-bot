@@ -94,7 +94,7 @@ type State =
         Characters: GuildUsers
     }
 
-let reduce (e: EventArgs.MessageCreateEventArgs) msg (state: State) =
+let reduce (client: DiscordClient, e: EventArgs.MessageCreateEventArgs) msg (state: State) =
     match msg with
     | Send opts ->
         let currentMember = getGuildMember e.Guild e.Author
@@ -111,9 +111,18 @@ let reduce (e: EventArgs.MessageCreateEventArgs) msg (state: State) =
                     let webhooks = await (channel.GetWebhooksAsync())
 
                     let webhook =
-                        if webhooks.Count > 0 then
-                            Right webhooks.[0]
-                        else
+                        let webhook =
+                            let currentId = client.CurrentUser.Id
+
+                            webhooks
+                            |> Seq.tryFind (fun x ->
+                                x.User.Id = currentId
+                            )
+
+                        match webhook with
+                        | Some webhook ->
+                            Right webhook
+                        | None ->
                             try
                                 await (channel.CreateWebhookAsync(sprintf "%d webhook" opts.ChannelId))
                                 |> Right
@@ -318,12 +327,12 @@ let reduce (e: EventArgs.MessageCreateEventArgs) msg (state: State) =
                 state
 
 type Req =
-    | Request of EventArgs.MessageCreateEventArgs * Request
-    | Handle of EventArgs.MessageCreateEventArgs
+    | Request of (DiscordClient * EventArgs.MessageCreateEventArgs) * Request
+    | Handle of DiscordClient * EventArgs.MessageCreateEventArgs
 
 let mainReduce req state =
     match req with
-    | Handle e ->
+    | Handle(client, e) ->
         if not e.Author.IsBot then
             let id = Id.create e.Guild.Id e.Author.Id
             match GuildUsers.tryFindById id state.Characters with
@@ -357,9 +366,17 @@ let mainReduce req state =
                         let webhooks = await (channel.GetWebhooksAsync())
 
                         let webhook =
-                            if webhooks.Count > 0 then
-                                Some webhooks.[0]
-                            else
+                            let webhook =
+                                let currentId = client.CurrentUser.Id
+
+                                webhooks
+                                |> Seq.tryFind (fun x ->
+                                    x.User.Id = currentId
+                                )
+
+                            match webhook with
+                            | Some webhook -> Some webhook
+                            | None ->
                                 try
                                     await (channel.CreateWebhookAsync(sprintf "%d webhook" channel.Id))
                                     |> Some
@@ -412,12 +429,12 @@ let create collectionName (db: MongoDB.Driver.IMongoDatabase) =
         MessageCreateEventHandleExclude =
             let exec: _ Parser.Parser =
                 Parser.start (fun (client: DiscordClient, e: EventArgs.MessageCreateEventArgs) msg ->
-                    m.Post (Request(e, msg))
+                    m.Post (Request((client, e), msg))
                 )
             Some exec
 
         MessageCreateEventHandle =
             let handle (client, (e: EventArgs.MessageCreateEventArgs)) =
-                m.Post (Handle e)
+                m.Post (Handle (client, e))
             Some handle
     }
