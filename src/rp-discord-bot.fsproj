@@ -6,7 +6,6 @@
   <ItemGroup>
     <Compile Include="Modules\Characters\Model.fs" />
     <Compile Include="Modules\Characters\Main.fs" />
-    <Compile Include="CommandParser.fs" />
     <Compile Include="App.fs" />
   </ItemGroup>
   <Import Project="..\.paket\Paket.Restore.targets" />
